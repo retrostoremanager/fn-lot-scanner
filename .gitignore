@@ -1,0 +1,19 @@
+# Build
+bin/
+obj/
+publish/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Local
+.vs/
+.vscode/
+*.log
+local.settings.json
+
+# Publish / packaging
+deploy.zip
+
+.DS_Store
+Thumbs.db
