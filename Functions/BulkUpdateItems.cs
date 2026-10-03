@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Logging;
 using fn_lot_scanner.Helpers;
 using fn_lot_scanner.Models;
 using fn_lot_scanner.Repos;
@@ -9,7 +10,7 @@ using fn_lot_scanner.Services.Dtos;
 namespace fn_lot_scanner.Functions;
 
 // PATCH /lot-scans/{id}/items:bulk (contracts/lot-scan-api.md). T021.
-public class BulkUpdateItems(ILotScanRepository repo)
+public class BulkUpdateItems(ILotScanRepository repo, ILogger<BulkUpdateItems> logger)
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
@@ -30,6 +31,9 @@ public class BulkUpdateItems(ILotScanRepository repo)
         // corrected/excluded/unidentified items pass through untouched (spec Acceptance
         // Scenario 2.2, contracts/lot-scan-api.md scoping rule).
         var items = await repo.BulkSetStateAsync(sessionId, body.ItemIds, body.State, context.CancellationToken);
+        logger.LogInformation(
+            "Bulk update: session {SessionId} -> state {State} requested for {Count} items",
+            sessionId, body.State, body.ItemIds.Count);
         return await ResponseHelper.Ok(req, items.Select(ScannedItemResponse.From).ToList());
     }
 }

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Logging;
 using fn_lot_scanner.Helpers;
 using fn_lot_scanner.Models;
 using fn_lot_scanner.Repos;
@@ -12,7 +13,7 @@ namespace fn_lot_scanner.Functions;
 // PATCH /lot-scans/{id}/items/{itemId} (contracts/lot-scan-api.md).
 // Covers: correct-via-catalog (T024, FR-006), price override on any item (T026,
 // FR-014), manual entry for unmatched items (T027, FR-008), and exclude (T028).
-public class UpdateItem(ILotScanRepository repo, ApiGamedbClient gamedbClient)
+public class UpdateItem(ILotScanRepository repo, ApiGamedbClient gamedbClient, ILogger<UpdateItem> logger)
 {
     private static readonly HashSet<string> AllowedStates =
         [ScannedItemState.Accepted, ScannedItemState.Corrected, ScannedItemState.Excluded, ScannedItemState.Unidentified];
@@ -74,6 +75,8 @@ public class UpdateItem(ILotScanRepository repo, ApiGamedbClient gamedbClient)
         }
 
         var updated = await repo.UpdateItemAsync(item, context.CancellationToken);
+        logger.LogInformation(
+            "Item updated: session {SessionId} item {ItemId} -> state {State}", sessionId, itemId, updated.State);
         return await ResponseHelper.Ok(req, ScannedItemResponse.From(updated));
     }
 }

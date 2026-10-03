@@ -2,6 +2,7 @@ using System.Text.Json;
 using Azure.Storage.Queues;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Logging;
 using fn_lot_scanner.Helpers;
 using fn_lot_scanner.Middleware;
 using fn_lot_scanner.Repos;
@@ -11,7 +12,8 @@ using fn_lot_scanner.Services.Dtos;
 namespace fn_lot_scanner.Functions;
 
 // POST /lot-scans (contracts/lot-scan-api.md). T018.
-public class CreateScan(ILotScanRepository repo, PhotoStorageService photos, QueueClient identifyQueue)
+public class CreateScan(
+    ILotScanRepository repo, PhotoStorageService photos, QueueClient identifyQueue, ILogger<CreateScan> logger)
 {
     [Function("CreateScan")]
     public async Task<HttpResponseData> Run(
@@ -41,6 +43,9 @@ public class CreateScan(ILotScanRepository repo, PhotoStorageService photos, Que
         var message = new IdentifyQueueMessage { SessionId = session.Id, PhotoUrl = photoUrl };
         await identifyQueue.SendMessageAsync(
             Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(message)), context.CancellationToken);
+
+        logger.LogInformation(
+            "Scan created: session {SessionId} by employee {EmployeeId}", session.Id, principal.EmployeeId);
 
         return await ResponseHelper.Accepted(req, new CreateScanResponse { SessionId = session.Id, Status = session.Status });
     }

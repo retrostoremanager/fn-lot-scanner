@@ -31,6 +31,9 @@ public class IdentifyQueueTrigger(
             var (bytes, contentType) = await photos.DownloadAsync(message.PhotoUrl, context.CancellationToken);
             var items = await identification.IdentifyAsync(bytes, contentType, context.CancellationToken);
             await repo.ReplaceItemsAsync(message.SessionId, items, context.CancellationToken);
+            logger.LogInformation(
+                "Identification complete: session {SessionId}, {ItemCount} items detected",
+                message.SessionId, items.Count);
         }
         catch (IdentificationFailedException ex)
         {
