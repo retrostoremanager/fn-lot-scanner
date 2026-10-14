@@ -40,9 +40,12 @@ public class CreateScan(
 
         var session = await repo.CreateSessionAsync(sessionId, principal.EmployeeId, photoUrl, context.CancellationToken);
 
+        // Sent as plain JSON, not manually base64-encoded -- the queue binding handles
+        // its own wire encoding; double-encoding here caused every delivery to throw
+        // before IdentifyQueueTrigger's try/catch could run, silently poisoning every
+        // message (found via a real end-to-end test with an actual lot photo, 2026-10-14).
         var message = new IdentifyQueueMessage { SessionId = session.Id, PhotoUrl = photoUrl };
-        await identifyQueue.SendMessageAsync(
-            Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(message)), context.CancellationToken);
+        await identifyQueue.SendMessageAsync(JsonSerializer.Serialize(message), context.CancellationToken);
 
         logger.LogInformation(
             "Scan created: session {SessionId} by employee {EmployeeId}", session.Id, principal.EmployeeId);

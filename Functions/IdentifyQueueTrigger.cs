@@ -19,15 +19,18 @@ public class IdentifyQueueTrigger(
 {
     [Function("IdentifyQueueTrigger")]
     public async Task Run(
-        [QueueTrigger("lot-scan-identify")] string messageBase64,
+        [QueueTrigger("lot-scan-identify")] string messageJson,
         FunctionContext context)
     {
-        var json = Convert.FromBase64String(messageBase64);
-        var message = JsonSerializer.Deserialize<IdentifyQueueMessage>(json)
-            ?? throw new InvalidOperationException("Could not deserialize IdentifyQueueMessage.");
-
+        IdentifyQueueMessage? message = null;
         try
         {
+            // Plain JSON, not base64 -- see CreateScan.cs for why. Deserialization is
+            // inside the try/catch now so any future parsing issue also degrades
+            // gracefully instead of silently poisoning the queue with no session update.
+            message = JsonSerializer.Deserialize<IdentifyQueueMessage>(messageJson)
+                ?? throw new InvalidOperationException("Could not deserialize IdentifyQueueMessage.");
+
             var (bytes, contentType) = await photos.DownloadAsync(message.PhotoUrl, context.CancellationToken);
             var items = await identification.IdentifyAsync(bytes, contentType, context.CancellationToken);
             await repo.ReplaceItemsAsync(message.SessionId, items, context.CancellationToken);
@@ -37,13 +40,20 @@ public class IdentifyQueueTrigger(
         }
         catch (IdentificationFailedException ex)
         {
-            logger.LogWarning(ex, "Identification failed for session {SessionId}", message.SessionId);
-            await repo.MarkFailedAsync(message.SessionId, ex.Message, context.CancellationToken);
+            logger.LogWarning(ex, "Identification failed for session {SessionId}", message?.SessionId);
+            if (message is not null)
+                await repo.MarkFailedAsync(message.SessionId, ex.Message, context.CancellationToken);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Unexpected error identifying session {SessionId}", message.SessionId);
-            await repo.MarkFailedAsync(message.SessionId, "Unexpected error during identification.", context.CancellationToken);
+            logger.LogError(ex, "Unexpected error identifying session {SessionId}", message?.SessionId);
+            // If message is null, deserialization itself failed -- there's no SessionId to
+            // mark failed. That genuinely is unrecoverable and should go to the poison
+            // queue (it would indicate a sender/wire-format bug, not a per-item failure).
+            if (message is not null)
+                await repo.MarkFailedAsync(message.SessionId, "Unexpected error during identification.", context.CancellationToken);
+            else
+                throw;
         }
     }
 }
