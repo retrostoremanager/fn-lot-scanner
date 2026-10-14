@@ -22,12 +22,12 @@ public class IdentifyQueueTrigger(
         [QueueTrigger("lot-scan-identify")] string messageJson,
         FunctionContext context)
     {
+        // Plain JSON -- the queue client (Program.cs) is configured with
+        // QueueMessageEncoding.Base64, so the Functions queue-trigger extension
+        // delivers already-decoded text here. No manual decoding needed.
         IdentifyQueueMessage? message = null;
         try
         {
-            // Plain JSON, not base64 -- see CreateScan.cs for why. Deserialization is
-            // inside the try/catch now so any future parsing issue also degrades
-            // gracefully instead of silently poisoning the queue with no session update.
             message = JsonSerializer.Deserialize<IdentifyQueueMessage>(messageJson)
                 ?? throw new InvalidOperationException("Could not deserialize IdentifyQueueMessage.");
 
@@ -47,13 +47,10 @@ public class IdentifyQueueTrigger(
         catch (Exception ex)
         {
             logger.LogError(ex, "Unexpected error identifying session {SessionId}", message?.SessionId);
-            // If message is null, deserialization itself failed -- there's no SessionId to
-            // mark failed. That genuinely is unrecoverable and should go to the poison
-            // queue (it would indicate a sender/wire-format bug, not a per-item failure).
             if (message is not null)
                 await repo.MarkFailedAsync(message.SessionId, "Unexpected error during identification.", context.CancellationToken);
             else
-                throw;
+                throw; // no SessionId to mark failed -- a wire-format bug, let it poison.
         }
     }
 }

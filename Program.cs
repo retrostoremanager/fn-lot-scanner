@@ -1,5 +1,6 @@
 using Anthropic.SDK;
 using Azure.Storage.Queues;
+using Azure.Storage.Queues.Models;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -63,7 +64,14 @@ var host = new HostBuilder()
         var queueConnectionString = cfg["AzureWebJobsStorage"] ?? "UseDevelopmentStorage=true";
         services.AddSingleton(_ =>
         {
-            var queueClient = new QueueClient(queueConnectionString, "lot-scan-identify");
+            // The Functions queue-trigger extension expects base64-encoded message
+            // bodies (the classic Azure Queue Storage convention); the plain
+            // Azure.Storage.Queues v12 SDK defaults to no encoding. Without this, every
+            // message the extension tries to deliver fails to decode before our
+            // trigger's Run() even starts, poisoning the queue silently within seconds
+            // (found via a real end-to-end test, 2026-10-14).
+            var queueClient = new QueueClient(queueConnectionString, "lot-scan-identify",
+                new QueueClientOptions { MessageEncoding = QueueMessageEncoding.Base64 });
             queueClient.CreateIfNotExists();
             return queueClient;
         });
