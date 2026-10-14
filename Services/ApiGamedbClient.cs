@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Web;
 using fn_lot_scanner.Services.Dtos;
@@ -51,7 +52,18 @@ public class ApiGamedbClient(HttpClient httpClient)
         var items = guesses.Select(g => new BulkLookupItemDto { Title = g.Title, Platform = g.Platform }).ToList();
         if (items.Count == 0) return [];
 
-        var response = await httpClient.PostAsJsonAsync("pricing/bulk-lookup", items, ct);
+        // Pre-serialized StringContent, not PostAsJsonAsync -- PostAsJsonAsync streams
+        // the body via JsonContent without a known Content-Length, which api-gamedb's
+        // isolated-worker HttpRequestData.ReadAsStringAsync() was silently truncating to
+        // empty for real (19-item) request bodies, causing JSON deserialization to throw
+        // on api-gamedb's side and return 400 "Body must be a JSON array..." even though
+        // the data itself was always well-formed (confirmed 2026-10-14: synthetic curl
+        // tests with an explicit Content-Length never reproduced it; only the streamed
+        // HttpClient path did). A fully-buffered StringContent always has a known
+        // Content-Length, avoiding chunked transfer entirely.
+        var json = JsonSerializer.Serialize(items);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await httpClient.PostAsync("pricing/bulk-lookup", content, ct);
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<BulkLookupResponseDto>(JsonOpts, ct);
         return body?.Results ?? [];
