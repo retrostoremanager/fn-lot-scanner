@@ -32,6 +32,13 @@ var host = new HostBuilder()
                 options.BaseUrl = cfg["ApiGamedb__BaseUrl"] ?? options.BaseUrl;
         });
 
+        services.Configure<MyStoreApiOptions>(options =>
+        {
+            cfg.GetSection(MyStoreApiOptions.SectionName).Bind(options);
+            if (string.IsNullOrWhiteSpace(options.BaseUrl) || options.BaseUrl == new MyStoreApiOptions().BaseUrl)
+                options.BaseUrl = cfg["MyStoreApi__BaseUrl"] ?? options.BaseUrl;
+        });
+
         services.Configure<AnthropicOptions>(options =>
         {
             cfg.GetSection(AnthropicOptions.SectionName).Bind(options);
@@ -53,6 +60,13 @@ var host = new HostBuilder()
             var baseUrl = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ApiGamedbOptions>>().Value.BaseUrl;
             client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
             client.Timeout = TimeSpan.FromSeconds(30);
+        });
+
+        services.AddHttpClient<MyStoreBillingClient>((sp, client) =>
+        {
+            var baseUrl = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MyStoreApiOptions>>().Value.BaseUrl;
+            client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+            client.Timeout = TimeSpan.FromSeconds(10);
         });
 
         services.AddSingleton(sp =>

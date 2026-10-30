@@ -13,7 +13,8 @@ namespace fn_lot_scanner.Functions;
 
 // POST /lot-scans (contracts/lot-scan-api.md). T018.
 public class CreateScan(
-    ILotScanRepository repo, PhotoStorageService photos, QueueClient identifyQueue, ILogger<CreateScan> logger)
+    ILotScanRepository repo, PhotoStorageService photos, QueueClient identifyQueue,
+    MyStoreBillingClient billing, ILogger<CreateScan> logger)
 {
     [Function("CreateScan")]
     public async Task<HttpResponseData> Run(
@@ -23,6 +24,19 @@ public class CreateScan(
         var principal = context.Features.Get<JwtPrincipalFeature>();
         if (principal is null)
             return await ResponseHelper.BadRequest(req, "Authenticated employee identity is required.");
+
+        // Every scan triggers a paid Claude vision call -- gate it on the company having
+        // the Lot Scanner Stripe add-on active. Fails closed: no CompanyId claim or no
+        // reachable fn-mystore both deny rather than allow.
+        var bearerToken = TryGetBearerToken(req);
+        var entitled = principal.CompanyId is int companyId && bearerToken is not null
+            && await billing.HasLotScannerAddOnAsync(companyId, bearerToken, context.CancellationToken);
+        if (!entitled)
+        {
+            var res = req.CreateResponse(System.Net.HttpStatusCode.PaymentRequired);
+            await res.WriteAsJsonAsync(new { error = "The Lot Scanner add-on is not active for this company." });
+            return res;
+        }
 
         var contentType = req.Headers.TryGetValues("Content-Type", out var ctValues)
             ? ctValues.FirstOrDefault() ?? ""
@@ -51,5 +65,14 @@ public class CreateScan(
             "Scan created: session {SessionId} by employee {EmployeeId}", session.Id, principal.EmployeeId);
 
         return await ResponseHelper.Accepted(req, new CreateScanResponse { SessionId = session.Id, Status = session.Status });
+    }
+
+    private static string? TryGetBearerToken(HttpRequestData req)
+    {
+        if (!req.Headers.TryGetValues("Authorization", out var values)) return null;
+        var header = values.FirstOrDefault();
+        const string prefix = "bearer ";
+        if (header is null || !header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
+        return header[prefix.Length..].Trim();
     }
 }
