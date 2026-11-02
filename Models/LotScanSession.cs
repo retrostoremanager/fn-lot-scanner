@@ -15,6 +15,11 @@ public class LotScanSession
 {
     public Guid Id { get; set; }
     public required string EmployeeId { get; set; }
+
+    // Nullable: no real production data exists for this app yet, so pre-migration rows
+    // are left null rather than backfilled -- new scans always populate it from the JWT.
+    public int? CompanyId { get; set; }
+
     public string Status { get; set; } = LotScanSessionStatus.Processing;
     public required string PhotoUrl { get; set; }
     public string? ErrorMessage { get; set; }
@@ -22,4 +27,5 @@ public class LotScanSession
     public DateTimeOffset? ConfirmedAt { get; set; }
 
     public List<ScannedItem> Items { get; set; } = [];
+    public List<LotScanPhoto> Photos { get; set; } = [];
 }

@@ -1,4 +1,5 @@
 using fn_lot_scanner.Models;
+using fn_lot_scanner.Repos;
 
 namespace fn_lot_scanner.Services.Dtos;
 
@@ -58,6 +59,30 @@ public class CreateScanResponse
 {
     public Guid SessionId { get; set; }
     public string Status { get; set; } = "";
+}
+
+// For the history list -- intentionally not the full nested SessionResponse, which would
+// be wasteful to return for every row in a list view.
+public class SessionSummaryResponse
+{
+    public Guid SessionId { get; set; }
+    public string Status { get; set; } = "";
+    public string EmployeeId { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? ConfirmedAt { get; set; }
+    public int PhotoCount { get; set; }
+    public int ItemCount { get; set; }
+
+    public static SessionSummaryResponse From(SessionSummary s) => new()
+    {
+        SessionId = s.SessionId,
+        Status = s.Status,
+        EmployeeId = s.EmployeeId,
+        CreatedAt = s.CreatedAt,
+        ConfirmedAt = s.ConfirmedAt,
+        PhotoCount = s.PhotoCount,
+        ItemCount = s.ItemCount
+    };
 }
 
 public class PatchItemRequest

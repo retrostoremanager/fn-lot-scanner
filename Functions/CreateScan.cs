@@ -46,19 +46,21 @@ public class CreateScan(
         if (photo is null)
             return await ResponseHelper.BadRequest(req, "multipart/form-data with a 'photo' part is required.");
 
-        // Pre-generate the session id so the blob can be named after it before the
+        // Pre-generate the session/photo ids so the blob can be named after them before the
         // session row (which needs the final photo_url) is created.
         var sessionId = Guid.NewGuid();
+        var photoId = Guid.NewGuid();
         var photoUrl = await photos.UploadAsync(
-            sessionId, new MemoryStream(photo.Value.Bytes), photo.Value.ContentType, context.CancellationToken);
+            sessionId, photoId, new MemoryStream(photo.Value.Bytes), photo.Value.ContentType, context.CancellationToken);
 
-        var session = await repo.CreateSessionAsync(sessionId, principal.EmployeeId, photoUrl, context.CancellationToken);
+        var session = await repo.CreateSessionAsync(
+            sessionId, photoId, principal.EmployeeId, principal.CompanyId, photoUrl, context.CancellationToken);
 
         // Plain JSON string here -- identifyQueue is configured with
         // QueueMessageEncoding.Base64 (see Program.cs), so the SDK handles base64
         // wrapping on the wire to match what the Functions queue-trigger extension
         // expects. No manual encoding on either side of this queue.
-        var message = new IdentifyQueueMessage { SessionId = session.Id, PhotoUrl = photoUrl };
+        var message = new IdentifyQueueMessage { SessionId = session.Id, PhotoId = photoId, PhotoUrl = photoUrl };
         await identifyQueue.SendMessageAsync(JsonSerializer.Serialize(message), context.CancellationToken);
 
         logger.LogInformation(

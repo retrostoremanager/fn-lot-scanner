@@ -15,10 +15,12 @@ public class PhotoStorageService(IOptions<BlobOptions> options)
     private readonly BlobContainerClient _container = new BlobContainerClient(
         options.Value.ConnectionString, options.Value.ContainerName);
 
-    public async Task<string> UploadAsync(Guid sessionId, Stream content, string contentType, CancellationToken ct)
+    // Named by photoId, not sessionId -- a session can gain more photos after the first,
+    // and naming by sessionId alone would overwrite the first photo's blob.
+    public async Task<string> UploadAsync(Guid sessionId, Guid photoId, Stream content, string contentType, CancellationToken ct)
     {
         await _container.CreateIfNotExistsAsync(cancellationToken: ct);
-        var blobName = $"{sessionId}{ExtensionFor(contentType)}";
+        var blobName = $"{sessionId}/{photoId}{ExtensionFor(contentType)}";
         var blob = _container.GetBlobClient(blobName);
         await blob.UploadAsync(content, new global::Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = contentType }, cancellationToken: ct);
         return blob.Uri.ToString();

@@ -5,34 +5,59 @@ namespace fn_lot_scanner.Repos;
 
 public class LotScanRepository(LotScanDbContext db) : ILotScanRepository
 {
-    public async Task<LotScanSession> CreateSessionAsync(Guid id, string employeeId, string photoUrl, CancellationToken ct)
+    public async Task<LotScanSession> CreateSessionAsync(Guid id, Guid firstPhotoId, string employeeId, int? companyId, string photoUrl, CancellationToken ct)
     {
         var session = new LotScanSession
         {
             Id = id,
             EmployeeId = employeeId,
+            CompanyId = companyId,
             PhotoUrl = photoUrl,
             Status = LotScanSessionStatus.Processing,
             CreatedAt = DateTimeOffset.UtcNow
         };
         db.LotScanSessions.Add(session);
+        db.LotScanPhotos.Add(new LotScanPhoto
+        {
+            Id = firstPhotoId,
+            SessionId = id,
+            PhotoUrl = photoUrl,
+            Status = LotScanPhotoStatus.Processing,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
         await db.SaveChangesAsync(ct);
         return session;
     }
 
     public Task<LotScanSession?> GetSessionAsync(Guid sessionId, CancellationToken ct) =>
-        db.LotScanSessions.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        db.LotScanSessions.Include(s => s.Items).Include(s => s.Photos).FirstOrDefaultAsync(s => s.Id == sessionId, ct);
 
-    public async Task ReplaceItemsAsync(Guid sessionId, IEnumerable<ScannedItem> items, CancellationToken ct)
+    public Task<List<SessionSummary>> ListSessionsForCompanyAsync(int companyId, string? status, int limit, int offset, CancellationToken ct)
+    {
+        var query = db.LotScanSessions.AsNoTracking().Where(s => s.CompanyId == companyId);
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(s => s.Status == status);
+
+        return query
+            .OrderByDescending(s => s.CreatedAt)
+            .Skip(offset).Take(limit)
+            .Select(s => new SessionSummary(
+                s.Id, s.Status, s.EmployeeId, s.CreatedAt, s.ConfirmedAt,
+                s.Photos.Count, s.Items.Count))
+            .ToListAsync(ct);
+    }
+
+    public async Task AppendItemsAsync(Guid sessionId, Guid photoId, IEnumerable<ScannedItem> items, CancellationToken ct)
     {
         foreach (var item in items)
         {
             item.Id = Guid.NewGuid();
             item.SessionId = sessionId;
+            item.PhotoId = photoId;
             item.CreatedAt = DateTimeOffset.UtcNow;
             db.ScannedItems.Add(item);
         }
-        await MarkInReviewAsync(sessionId, ct);
+        await db.SaveChangesAsync(ct);
     }
 
     public async Task MarkFailedAsync(Guid sessionId, string errorMessage, CancellationToken ct)
@@ -49,6 +74,45 @@ public class LotScanRepository(LotScanDbContext db) : ILotScanRepository
         var session = await db.LotScanSessions.FindAsync([sessionId], ct);
         if (session is null) return;
         session.Status = LotScanSessionStatus.InReview;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<(AddPhotoResult Result, LotScanSession? Session)> AddPhotoAsync(
+        Guid sessionId, Guid photoId, int? companyId, string photoUrl, CancellationToken ct)
+    {
+        var session = await GetSessionAsync(sessionId, ct);
+        if (session is null) return (AddPhotoResult.NotFound, null);
+        if (session.CompanyId is null || companyId is null || session.CompanyId != companyId)
+            return (AddPhotoResult.WrongCompany, session);
+        if (session.Status != LotScanSessionStatus.InReview)
+            return (AddPhotoResult.NotInReview, session);
+
+        db.LotScanPhotos.Add(new LotScanPhoto
+        {
+            Id = photoId,
+            SessionId = sessionId,
+            PhotoUrl = photoUrl,
+            Status = LotScanPhotoStatus.Processing,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync(ct);
+        return (AddPhotoResult.Added, session);
+    }
+
+    public async Task MarkPhotoDoneAsync(Guid photoId, CancellationToken ct)
+    {
+        var photo = await db.LotScanPhotos.FindAsync([photoId], ct);
+        if (photo is null) return;
+        photo.Status = LotScanPhotoStatus.Done;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task MarkPhotoFailedAsync(Guid photoId, string errorMessage, CancellationToken ct)
+    {
+        var photo = await db.LotScanPhotos.FindAsync([photoId], ct);
+        if (photo is null) return;
+        photo.Status = LotScanPhotoStatus.Failed;
+        photo.ErrorMessage = errorMessage;
         await db.SaveChangesAsync(ct);
     }
 

@@ -41,6 +41,14 @@ public static class ResponseHelper
     public static Task<HttpResponseData> NotFound(HttpRequestData req) =>
         Task.FromResult(req.CreateResponse(HttpStatusCode.NotFound));
 
+    public static async Task<HttpResponseData> Forbidden(HttpRequestData req, string message)
+    {
+        var response = req.CreateResponse(HttpStatusCode.Forbidden);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(JsonSerializer.Serialize(new { error = message }, JsonOptions));
+        return response;
+    }
+
     public static async Task<HttpResponseData> Conflict(HttpRequestData req, string message)
     {
         var response = req.CreateResponse(HttpStatusCode.Conflict);

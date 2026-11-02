@@ -39,6 +39,11 @@ public class ScannedItem
 
     public string State { get; set; } = ScannedItemState.Pending;
     public bool ManuallyEntered { get; set; }
+
+    // Which photo this item was identified from. Nullable for rows that predate
+    // multi-photo support.
+    public Guid? PhotoId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public LotScanSession? Session { get; set; }
