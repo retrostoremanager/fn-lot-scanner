@@ -16,7 +16,7 @@ public class BulkUpdateItems(ILotScanRepository repo, ILogger<BulkUpdateItems> l
 
     [Function("BulkUpdateItems")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "lot-scans/{sessionId:guid}/items:bulk")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", "options", Route = "lot-scans/{sessionId:guid}/items:bulk")]
         HttpRequestData req,
         Guid sessionId, FunctionContext context)
     {

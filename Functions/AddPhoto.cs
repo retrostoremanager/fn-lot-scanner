@@ -20,7 +20,7 @@ public class AddPhoto(
 {
     [Function("AddPhoto")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "lot-scans/{id:guid}/photos")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "lot-scans/{id:guid}/photos")] HttpRequestData req,
         Guid id, FunctionContext context)
     {
         var principal = context.Features.Get<JwtPrincipalFeature>();

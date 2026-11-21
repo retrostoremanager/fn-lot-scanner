@@ -12,7 +12,7 @@ public class DiscardScan(ILotScanRepository repo, ILogger<DiscardScan> logger)
 {
     [Function("DiscardScan")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "lot-scans/{id:guid}/discard")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "lot-scans/{id:guid}/discard")] HttpRequestData req,
         Guid id, FunctionContext context)
     {
         var result = await repo.DiscardAsync(id, context.CancellationToken);

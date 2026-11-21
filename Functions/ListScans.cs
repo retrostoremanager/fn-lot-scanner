@@ -17,7 +17,7 @@ public class ListScans(ILotScanRepository repo)
 
     [Function("ListScans")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "lot-scans")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "options", Route = "lot-scans")] HttpRequestData req,
         FunctionContext context)
     {
         var principal = context.Features.Get<JwtPrincipalFeature>();

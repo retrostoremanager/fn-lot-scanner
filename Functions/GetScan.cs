@@ -11,7 +11,7 @@ public class GetScan(ILotScanRepository repo)
 {
     [Function("GetScan")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "lot-scans/{id:guid}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "options", Route = "lot-scans/{id:guid}")] HttpRequestData req,
         Guid id, FunctionContext context)
     {
         var session = await repo.GetSessionAsync(id, context.CancellationToken);

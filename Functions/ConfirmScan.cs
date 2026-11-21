@@ -12,7 +12,7 @@ public class ConfirmScan(ILotScanRepository repo, ILogger<ConfirmScan> logger)
 {
     [Function("ConfirmScan")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "lot-scans/{id:guid}/confirm")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "lot-scans/{id:guid}/confirm")] HttpRequestData req,
         Guid id, FunctionContext context)
     {
         var (result, session) = await repo.ConfirmAsync(id, context.CancellationToken);

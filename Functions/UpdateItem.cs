@@ -21,7 +21,7 @@ public class UpdateItem(ILotScanRepository repo, ApiGamedbClient gamedbClient, I
 
     [Function("UpdateItem")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "lot-scans/{sessionId:guid}/items/{itemId:guid}")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", "options", Route = "lot-scans/{sessionId:guid}/items/{itemId:guid}")]
         HttpRequestData req,
         Guid sessionId, Guid itemId, FunctionContext context)
     {

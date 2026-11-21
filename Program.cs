@@ -13,11 +13,13 @@ using fn_lot_scanner.Services;
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults(builder =>
     {
+        builder.UseMiddleware<CorsMiddleware>();
         builder.UseMiddleware<JwtAuthenticationMiddleware>();
     })
     .ConfigureServices((context, services) =>
     {
         var cfg = context.Configuration;
+        services.AddSingleton<CorsMiddleware>();
 
         var connectionString = cfg["ConnectionStrings:lotscanner"]
             ?? cfg["ConnectionStrings__lotscanner"]

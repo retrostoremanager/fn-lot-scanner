@@ -11,7 +11,7 @@ public class CatalogSearch(ApiGamedbClient gamedbClient)
 {
     [Function("CatalogSearch")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "lot-scans/catalog-search")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "options", Route = "lot-scans/catalog-search")] HttpRequestData req,
         FunctionContext context)
     {
         var query = req.Query["q"];
