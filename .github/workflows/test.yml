@@ -1,0 +1,59 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # The Functions host needs a real storage backend for its own bookkeeping (locks etc.)
+    # even though none of these tests' code paths touch blob/queue storage themselves --
+    # AzureWebJobsStorage=UseDevelopmentStorage=true with nothing listening fails host
+    # startup outright (confirmed: "Value cannot be null (Parameter 'provider')").
+    services:
+      azurite:
+        image: mcr.microsoft.com/azure-storage/azurite:latest
+        ports:
+          - 10000:10000
+          - 10001:10001
+          - 10002:10002
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      # The integration tests launch the real compiled app via `func start` and send it
+      # real HTTP requests (see tests/fn_lot_scanner.Tests/FuncHostFixture.cs) -- this is
+      # the only way to test this app's actual routing + middleware pipeline, since the
+      # isolated-worker model has no in-process test host.
+      # Pinned exact version: azure-functions-core-tools@4 (floating) resolved an older
+      # build whose bundled host has a known assembly-version mismatch against a net10.0
+      # worker ("Microsoft.Extensions.Options, Version=10.0.0.0" FileLoadException) --
+      # confirmed broken in CI. 4.17.0 is verified working against this app.
+      - name: Install Azure Functions Core Tools
+        run: npm install -g azure-functions-core-tools@4.17.0 --unsafe-perm true
+
+      # Debug (the default) to match FuncHostFixture's assumption that the main project's
+      # build output sits alongside the test project's own configuration/TFM.
+      - name: Build
+        run: dotnet build fn-lot-scanner.csproj
+
+      - name: Test
+        run: dotnet test tests/fn_lot_scanner.Tests/fn_lot_scanner.Tests.csproj

@@ -51,7 +51,17 @@ public class CorsMiddleware(IConfiguration configuration) : IFunctionsWorkerMidd
 
     private HashSet<string> GetAllowedOrigins()
     {
-        var corsSetting = configuration["Cors__AllowedOrigins"] ?? configuration["CORS"];
+        // "Cors__AllowedOrigins" (double underscore) is the Azure App Settings naming
+        // convention, but it's only an INPUT syntax: .NET's standard environment-variable
+        // config provider converts it to the nested path "Cors:AllowedOrigins" before it
+        // ever reaches IConfiguration, so a literal flat-string lookup on the double-
+        // underscore form never matches. Confirmed via a real integration test -- this
+        // means the origin-matching logic here never actually ran against a real env var
+        // in production; CORS worked anyway only because Azure's platform-level CORS
+        // (az functionapp cors add) was doing the real enforcement.
+        var corsSetting = configuration["Cors:AllowedOrigins"]
+            ?? configuration["Cors__AllowedOrigins"]
+            ?? configuration["CORS"];
         if (string.IsNullOrWhiteSpace(corsSetting))
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
