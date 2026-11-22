@@ -56,4 +56,20 @@ public static class ResponseHelper
         await response.WriteStringAsync(JsonSerializer.Serialize(new { error = message }, JsonOptions));
         return response;
     }
+
+    public static async Task<HttpResponseData> PayloadTooLarge(HttpRequestData req, string message)
+    {
+        var response = req.CreateResponse(HttpStatusCode.RequestEntityTooLarge);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(JsonSerializer.Serialize(new { error = message }, JsonOptions));
+        return response;
+    }
+
+    public static async Task<HttpResponseData> TooManyRequests(HttpRequestData req, string message)
+    {
+        var response = req.CreateResponse(HttpStatusCode.TooManyRequests);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(JsonSerializer.Serialize(new { error = message }, JsonOptions));
+        return response;
+    }
 }

@@ -41,6 +41,13 @@ var host = new HostBuilder()
                 options.BaseUrl = cfg["MyStoreApi__BaseUrl"] ?? options.BaseUrl;
         });
 
+        services.Configure<ScanLimitsOptions>(options =>
+        {
+            cfg.GetSection(ScanLimitsOptions.SectionName).Bind(options);
+            if (cfg["ScanLimits__DailyPhotoCapPerCompany"] is { } capStr && int.TryParse(capStr, out var cap))
+                options.DailyPhotoCapPerCompany = cap;
+        });
+
         services.Configure<AnthropicOptions>(options =>
         {
             cfg.GetSection(AnthropicOptions.SectionName).Bind(options);

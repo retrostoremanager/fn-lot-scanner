@@ -3,6 +3,7 @@ using Azure.Storage.Queues;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using fn_lot_scanner.Helpers;
 using fn_lot_scanner.Middleware;
 using fn_lot_scanner.Repos;
@@ -16,7 +17,7 @@ namespace fn_lot_scanner.Functions;
 // entitlement gate, multipart extraction, blob upload and enqueue pattern closely.
 public class AddPhoto(
     ILotScanRepository repo, PhotoStorageService photos, QueueClient identifyQueue,
-    MyStoreBillingClient billing, ILogger<AddPhoto> logger)
+    MyStoreBillingClient billing, IOptions<ScanLimitsOptions> scanLimits, ILogger<AddPhoto> logger)
 {
     [Function("AddPhoto")]
     public async Task<HttpResponseData> Run(
@@ -38,17 +39,27 @@ public class AddPhoto(
             return res;
         }
 
+        // Same per-company daily cap as CreateScan -- an added photo is just as billed.
+        var cap = scanLimits.Value.DailyPhotoCapPerCompany;
+        var since = DateTimeOffset.UtcNow.AddHours(-24);
+        var photosToday = await repo.CountPhotosCreatedSinceAsync(principal.CompanyId!.Value, since, context.CancellationToken);
+        if (photosToday >= cap)
+            return await ResponseHelper.TooManyRequests(req,
+                $"This company has reached its limit of {cap} scans per day. Try again later.");
+
         var contentType = req.Headers.TryGetValues("Content-Type", out var ctValues)
             ? ctValues.FirstOrDefault() ?? ""
             : "";
 
         var photo = await MultipartHelper.ExtractPhotoAsync(req.Body, contentType, context.CancellationToken);
-        if (photo is null)
+        if (photo.Error == PhotoExtractError.TooLarge)
+            return await ResponseHelper.PayloadTooLarge(req, $"Photo exceeds the {MultipartHelper.MaxPhotoBytes / (1024 * 1024)}MB limit.");
+        if (!photo.IsSuccess)
             return await ResponseHelper.BadRequest(req, "multipart/form-data with a 'photo' part is required.");
 
         var photoId = Guid.NewGuid();
         var photoUrl = await photos.UploadAsync(
-            id, photoId, new MemoryStream(photo.Value.Bytes), photo.Value.ContentType, context.CancellationToken);
+            id, photoId, new MemoryStream(photo.Bytes!), photo.ContentType!, context.CancellationToken);
 
         var (result, session) = await repo.AddPhotoAsync(id, photoId, principal.CompanyId, photoUrl, context.CancellationToken);
         switch (result)

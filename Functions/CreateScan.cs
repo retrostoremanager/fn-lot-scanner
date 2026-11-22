@@ -3,6 +3,7 @@ using Azure.Storage.Queues;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using fn_lot_scanner.Helpers;
 using fn_lot_scanner.Middleware;
 using fn_lot_scanner.Repos;
@@ -14,7 +15,7 @@ namespace fn_lot_scanner.Functions;
 // POST /lot-scans (contracts/lot-scan-api.md). T018.
 public class CreateScan(
     ILotScanRepository repo, PhotoStorageService photos, QueueClient identifyQueue,
-    MyStoreBillingClient billing, ILogger<CreateScan> logger)
+    MyStoreBillingClient billing, IOptions<ScanLimitsOptions> scanLimits, ILogger<CreateScan> logger)
 {
     [Function("CreateScan")]
     public async Task<HttpResponseData> Run(
@@ -38,12 +39,23 @@ public class CreateScan(
             return res;
         }
 
+        // Each photo is a billed Claude call with no other cost control (the entitlement
+        // check above is binary, not a budget) -- cap it per company per rolling 24h.
+        var cap = scanLimits.Value.DailyPhotoCapPerCompany;
+        var since = DateTimeOffset.UtcNow.AddHours(-24);
+        var photosToday = await repo.CountPhotosCreatedSinceAsync(principal.CompanyId!.Value, since, context.CancellationToken);
+        if (photosToday >= cap)
+            return await ResponseHelper.TooManyRequests(req,
+                $"This company has reached its limit of {cap} scans per day. Try again later.");
+
         var contentType = req.Headers.TryGetValues("Content-Type", out var ctValues)
             ? ctValues.FirstOrDefault() ?? ""
             : "";
 
         var photo = await MultipartHelper.ExtractPhotoAsync(req.Body, contentType, context.CancellationToken);
-        if (photo is null)
+        if (photo.Error == PhotoExtractError.TooLarge)
+            return await ResponseHelper.PayloadTooLarge(req, $"Photo exceeds the {MultipartHelper.MaxPhotoBytes / (1024 * 1024)}MB limit.");
+        if (!photo.IsSuccess)
             return await ResponseHelper.BadRequest(req, "multipart/form-data with a 'photo' part is required.");
 
         // Pre-generate the session/photo ids so the blob can be named after them before the
@@ -51,7 +63,7 @@ public class CreateScan(
         var sessionId = Guid.NewGuid();
         var photoId = Guid.NewGuid();
         var photoUrl = await photos.UploadAsync(
-            sessionId, photoId, new MemoryStream(photo.Value.Bytes), photo.Value.ContentType, context.CancellationToken);
+            sessionId, photoId, new MemoryStream(photo.Bytes!), photo.ContentType!, context.CancellationToken);
 
         var session = await repo.CreateSessionAsync(
             sessionId, photoId, principal.EmployeeId, principal.CompanyId, photoUrl, context.CancellationToken);

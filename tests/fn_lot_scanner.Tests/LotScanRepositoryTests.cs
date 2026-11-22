@@ -175,4 +175,39 @@ public class LotScanRepositoryTests
         reloaded.Items.Should().ContainSingle(i => i.State == ScannedItemState.Accepted); // untouched
         reloaded.Photos.Single(p => p.Id == secondPhoto.Id).Status.Should().Be(LotScanPhotoStatus.Failed);
     }
+
+    [Fact]
+    public async Task CountPhotosCreatedSinceAsync_CountsOnlyThisCompanysPhotosSinceTheCutoff()
+    {
+        using var db = NewDb();
+        var repo = new LotScanRepository(db);
+
+        // Company 1: one session's first photo (from CreateSessionAsync) plus one
+        // added photo -- both should count.
+        var session1 = await repo.CreateSessionAsync(Guid.NewGuid(), Guid.NewGuid(), "emp-1", companyId: 1, "blob://a", default);
+        await repo.MarkInReviewAsync(session1.Id, default);
+        await repo.AddPhotoAsync(session1.Id, Guid.NewGuid(), companyId: 1, "blob://b", default);
+
+        // Company 2: a photo that must not be counted in company 1's total.
+        await repo.CreateSessionAsync(Guid.NewGuid(), Guid.NewGuid(), "emp-2", companyId: 2, "blob://c", default);
+
+        var count = await repo.CountPhotosCreatedSinceAsync(1, DateTimeOffset.UtcNow.AddHours(-24), default);
+
+        count.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task CountPhotosCreatedSinceAsync_ExcludesPhotosOlderThanTheCutoff()
+    {
+        using var db = NewDb();
+        var repo = new LotScanRepository(db);
+        var session = await repo.CreateSessionAsync(Guid.NewGuid(), Guid.NewGuid(), "emp-1", companyId: 1, "blob://a", default);
+
+        // The cutoff is set to the future relative to the photo just created, so it
+        // must not be counted -- same as a photo from yesterday wouldn't count today.
+        var count = await repo.CountPhotosCreatedSinceAsync(1, DateTimeOffset.UtcNow.AddMinutes(1), default);
+
+        count.Should().Be(0);
+        session.Should().NotBeNull(); // sanity: the session really was created
+    }
 }

@@ -47,6 +47,11 @@ public class LotScanRepository(LotScanDbContext db) : ILotScanRepository
             .ToListAsync(ct);
     }
 
+    public Task<int> CountPhotosCreatedSinceAsync(int companyId, DateTimeOffset sinceUtc, CancellationToken ct) =>
+        db.LotScanPhotos.AsNoTracking()
+            .Where(p => p.Session!.CompanyId == companyId && p.CreatedAt >= sinceUtc)
+            .CountAsync(ct);
+
     public async Task AppendItemsAsync(Guid sessionId, Guid photoId, IEnumerable<ScannedItem> items, CancellationToken ct)
     {
         foreach (var item in items)

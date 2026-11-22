@@ -19,6 +19,10 @@ public interface ILotScanRepository
     Task<LotScanSession?> GetSessionAsync(Guid sessionId, CancellationToken ct);
     Task<List<SessionSummary>> ListSessionsForCompanyAsync(int companyId, string? status, int limit, int offset, CancellationToken ct);
 
+    // Every row here is one billed Claude vision call (CreateScan's first photo or an
+    // AddPhoto call) -- used to enforce ScanLimitsOptions.DailyPhotoCapPerCompany.
+    Task<int> CountPhotosCreatedSinceAsync(int companyId, DateTimeOffset sinceUtc, CancellationToken ct);
+
     // Only ever appends -- never deletes existing items, including across multiple
     // photos on the same session.
     Task AppendItemsAsync(Guid sessionId, Guid photoId, IEnumerable<ScannedItem> items, CancellationToken ct);
