@@ -1,0 +1,61 @@
+name: Deploy Function App (dev)
+
+# Code-only deploy -- infra-lot-scanner's deploy-infrastructure.yml owns provisioning
+# and app settings (connection strings, API keys, Key Vault). This workflow only ships
+# fn-lot-scanner's own code to the Function App infra-lot-scanner already created.
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-function-app-dev
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore fn-lot-scanner.csproj
+
+      - name: Build
+        run: dotnet build fn-lot-scanner.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish fn-lot-scanner.csproj --configuration Release --output ./publish --no-build
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Function App
+        run: |
+          cd publish
+          zip -r ../deploy.zip . -x "*.git*"
+          cd ..
+          az functionapp deployment source config-zip \
+            --resource-group lot-scanner-rg-dev \
+            --name lot-scanner-func-dev \
+            --src deploy.zip
+
+      - name: Restart Function App
+        run: |
+          az functionapp restart --name lot-scanner-func-dev --resource-group lot-scanner-rg-dev --output none
+          echo "Function App restarted."
+
+      - name: Deployment Complete
+        run: |
+          echo "fn-lot-scanner deployed to dev successfully!"
+          echo "URL: https://lot-scanner-func-dev.azurewebsites.net"

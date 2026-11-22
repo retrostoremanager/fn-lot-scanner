@@ -1,0 +1,65 @@
+name: Deploy Function App (prod)
+
+# Manual-only on purpose: prod should never deploy as a side effect of a dev push
+# (matches infra-lot-scanner's deploy-infrastructure-prod.yml). Code-only deploy --
+# infra-lot-scanner owns provisioning and app settings.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch/ref to deploy'
+        required: false
+        default: 'master'
+
+concurrency:
+  group: deploy-function-app-prod
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'master' }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore fn-lot-scanner.csproj
+
+      - name: Build
+        run: dotnet build fn-lot-scanner.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish fn-lot-scanner.csproj --configuration Release --output ./publish --no-build
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Function App
+        run: |
+          cd publish
+          zip -r ../deploy.zip . -x "*.git*"
+          cd ..
+          az functionapp deployment source config-zip \
+            --resource-group lot-scanner-rg-prod \
+            --name lot-scanner-func-prod \
+            --src deploy.zip
+
+      - name: Restart Function App
+        run: |
+          az functionapp restart --name lot-scanner-func-prod --resource-group lot-scanner-rg-prod --output none
+          echo "Function App restarted."
+
+      - name: Deployment Complete
+        run: |
+          echo "fn-lot-scanner deployed to prod successfully!"
+          echo "URL: https://lot-scanner-func-prod.azurewebsites.net"
