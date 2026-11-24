@@ -3,6 +3,15 @@ name: Deploy Function App (prod)
 # Manual-only on purpose: prod should never deploy as a side effect of a dev push
 # (matches infra-lot-scanner's deploy-infrastructure-prod.yml). Code-only deploy --
 # infra-lot-scanner owns provisioning and app settings.
+#
+# lot-scanner-func-prod runs on Flex Consumption (Linux) as of 2026-11-24, after
+# Windows Consumption's host runtime proved unable to reliably specialize .NET 9/10
+# isolated-worker apps on this subscription's scale unit. Flex Consumption uses a
+# different deployment model than classic zip-deploy: az functionapp deployment
+# source config-zip and even az functionapp deploy / Azure/functions-action were all
+# confirmed to silently no-op against it (the function list stayed stuck on the
+# system WarmUp placeholder). Azure Functions Core Tools (func azure functionapp
+# publish) is the only method confirmed to actually work here.
 on:
   workflow_dispatch:
     inputs:
@@ -18,6 +27,7 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout code
@@ -30,34 +40,22 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore
-        run: dotnet restore fn-lot-scanner.csproj
+      - name: Install Azure Functions Core Tools
+        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
+      - name: Restore (linux-x64)
+        run: dotnet restore fn-lot-scanner.csproj --runtime linux-x64
 
       - name: Build
         run: dotnet build fn-lot-scanner.csproj --configuration Release --no-restore
-
-      - name: Publish
-        run: dotnet publish fn-lot-scanner.csproj --configuration Release --output ./publish --no-build
 
       - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Azure Function App
-        run: |
-          cd publish
-          zip -r ../deploy.zip . -x "*.git*"
-          cd ..
-          az functionapp deployment source config-zip \
-            --resource-group lot-scanner-rg-prod \
-            --name lot-scanner-func-prod \
-            --src deploy.zip
-
-      - name: Restart Function App
-        run: |
-          az functionapp restart --name lot-scanner-func-prod --resource-group lot-scanner-rg-prod --output none
-          echo "Function App restarted."
+      - name: Publish with Azure Functions Core Tools
+        run: func azure functionapp publish lot-scanner-func-prod --dotnet-isolated
 
       - name: Deployment Complete
         run: |
